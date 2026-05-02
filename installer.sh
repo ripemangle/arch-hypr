@@ -3,7 +3,7 @@
 set -e
 
 echo "=============================="
-echo " ARCH HYPRLAND DUAL BOOT INSTALLER (SAFE FIXED VERSION)"
+echo " ARCH HYPRLAND DUAL BOOT INSTALLER (FIXED + AUTO GUI)"
 echo "=============================="
 
 lsblk
@@ -33,10 +33,6 @@ pacstrap /mnt base linux linux-firmware amd-ucode nano networkmanager grub efibo
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-echo "=============================="
-echo "ENTER USER CONFIG"
-echo "=============================="
-
 USERNAME="ripe"
 HOSTNAME="arch-hypr"
 
@@ -60,29 +56,55 @@ useradd -m -G wheel $USERNAME
 echo "Enabling sudo..."
 echo "%wheel ALL=(ALL:ALL) ALL" >> /etc/sudoers
 
-echo "Installing GRUB (dual boot)..."
+echo "Installing core packages..."
+pacman -S --noconfirm \
+    hyprland wayland wlroots xorg-xwayland \
+    xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
+    waybar kitty dunst \
+    pipewire pipewire-pulse wireplumber \
+    network-manager-applet git polkit polkit-gnome \
+    greetd greetd-tuigreet
+
+echo "Installing NVIDIA drivers..."
+pacman -S --noconfirm \
+    nvidia nvidia-utils nvidia-settings lib32-nvidia-utils \
+    vulkan-icd-loader lib32-vulkan-icd-loader
+
+echo "Installing gaming stack..."
+pacman -S --noconfirm steam wine winetricks lutris
+
+echo "Enable services..."
+systemctl enable NetworkManager
+systemctl enable greetd
+
+echo "Configure greetd (auto Hyprland login screen)..."
+mkdir -p /etc/greetd
+cat > /etc/greetd/config.toml <<EOL
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --cmd Hyprland"
+user = "greeter"
+EOL
+
+echo "Enable Windows detection..."
+sed -i 's/#GRUB_DISABLE_OS_PROBER=false/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub || true
+echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
+
+echo "Enable NVIDIA DRM..."
+sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="nvidia_drm.modeset=1 /' /etc/default/grub
+
+echo "Install GRUB..."
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+
 os-prober
 grub-mkconfig -o /boot/grub/grub.cfg
-
-echo "Installing Hyprland desktop..."
-pacman -S --noconfirm hyprland xdg-desktop-portal-hyprland xdg-desktop-portal-gtk \
-waybar kitty dunst pipewire pipewire-pulse wireplumber network-manager-applet git
-
-echo "Installing gaming + GPU stack..."
-pacman -S --noconfirm nvidia nvidia-utils nvidia-settings lib32-nvidia-utils \
-steam wine winetricks lutris vulkan-icd-loader lib32-vulkan-icd-loader
-
-echo "Enabling services..."
-systemctl enable NetworkManager
 
 echo "DONE INSIDE CHROOT"
 EOF
 
-echo "=============================="
-echo "SETTING PASSWORDS (FIXED)"
-echo "=============================="
-
+echo "Set passwords..."
 arch-chroot /mnt passwd root
 arch-chroot /mnt passwd ripe
 
@@ -90,6 +112,6 @@ echo "Unmounting..."
 umount -R /mnt
 
 echo "=============================="
-echo "INSTALL COMPLETE"
-echo "Reboot and select GRUB to choose Windows or Arch"
+echo " INSTALL COMPLETE"
+echo "Reboot → GRUB → Arch → GUI login → Hyprland"
 echo "=============================="
