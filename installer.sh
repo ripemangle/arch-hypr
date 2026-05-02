@@ -56,10 +56,6 @@ echo "$HOSTNAME" > /etc/hostname
 
 echo "Creating user..."
 useradd -m -G wheel $USERNAME
-echo "Set ROOT password:"
-passwd
-echo "Set USER password for $USERNAME:"
-passwd $USERNAME
 
 echo "Enabling sudo..."
 echo "%wheel ALL=(ALL:ALL) ALL" >> /etc/sudoers
@@ -80,11 +76,15 @@ steam wine winetricks lutris vulkan-icd-loader lib32-vulkan-icd-loader
 echo "Enabling services..."
 systemctl enable NetworkManager
 
-echo "Optional GPU service..."
-systemctl enable nvidia-persistenced || true
-
 echo "DONE INSIDE CHROOT"
 EOF
+
+echo "=============================="
+echo "SETTING PASSWORDS (FIXED)"
+echo "=============================="
+
+arch-chroot /mnt passwd root
+arch-chroot /mnt passwd ripe
 
 echo "Unmounting..."
 umount -R /mnt
