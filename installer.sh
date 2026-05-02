@@ -3,7 +3,7 @@
 set -e
 
 echo "=============================="
-echo " ARCH HYPRLAND DUAL BOOT INSTALLER (FIXED + AUTO GUI)"
+echo " ARCH HYPRLAND DUAL BOOT INSTALLER (NVIDIA FIXED)"
 echo "=============================="
 
 lsblk
@@ -29,7 +29,7 @@ mkdir -p /mnt/boot/efi
 mount $EFI_PART /mnt/boot/efi
 
 echo "Installing base system..."
-pacstrap /mnt base linux linux-firmware amd-ucode nano networkmanager grub efibootmgr os-prober sudo
+pacstrap /mnt base linux linux-firmware amd-ucode nano networkmanager grub efibootmgr os-prober sudo dbus
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
@@ -53,7 +53,7 @@ echo "$HOSTNAME" > /etc/hostname
 echo "Creating user..."
 useradd -m -G wheel $USERNAME
 
-echo "Enabling sudo..."
+echo "Setting sudo..."
 echo "%wheel ALL=(ALL:ALL) ALL" >> /etc/sudoers
 
 echo "Installing core packages..."
@@ -63,7 +63,8 @@ pacman -S --noconfirm \
     waybar kitty dunst \
     pipewire pipewire-pulse wireplumber \
     network-manager-applet git polkit polkit-gnome \
-    greetd greetd-tuigreet
+    greetd greetd-tuigreet \
+    mesa vulkan-tools dbus seatd
 
 echo "Installing NVIDIA drivers..."
 pacman -S --noconfirm \
@@ -76,15 +77,20 @@ pacman -S --noconfirm steam wine winetricks lutris
 echo "Enable services..."
 systemctl enable NetworkManager
 systemctl enable greetd
+systemctl enable seatd
+systemctl enable dbus
 
-echo "Configure greetd (auto Hyprland login screen)..."
+echo "Add user to video/input groups..."
+usermod -aG video,input $USERNAME
+
+echo "Configure greetd..."
 mkdir -p /etc/greetd
 cat > /etc/greetd/config.toml <<EOL
 [terminal]
 vt = 1
 
 [default_session]
-command = "tuigreet --cmd Hyprland"
+command = "tuigreet --cmd dbus-run-session Hyprland"
 user = "greeter"
 EOL
 
@@ -95,23 +101,45 @@ echo "GRUB_DISABLE_OS_PROBER=false" >> /etc/default/grub
 echo "Enable NVIDIA DRM..."
 sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="nvidia_drm.modeset=1 /' /etc/default/grub
 
+echo "Add NVIDIA modules to initramfs..."
+sed -i 's/^MODULES=.*/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
+mkinitcpio -P
+
+echo "Set NVIDIA Wayland environment..."
+mkdir -p /etc/environment.d
+cat > /etc/environment.d/nvidia.conf <<EOL
+LIBVA_DRIVER_NAME=nvidia
+XDG_SESSION_TYPE=wayland
+GBM_BACKEND=nvidia-drm
+__GLX_VENDOR_LIBRARY_NAME=nvidia
+WLR_NO_HARDWARE_CURSORS=1
+EOL
+
 echo "Install GRUB..."
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
 
-os-prober
+echo "Detect Windows..."
+os-prober || true
+
+echo "Generate GRUB config..."
 grub-mkconfig -o /boot/grub/grub.cfg
 
-echo "DONE INSIDE CHROOT"
+echo "CHROOT SETUP DONE"
 EOF
 
 echo "Set passwords..."
 arch-chroot /mnt passwd root
-arch-chroot /mnt passwd ripe
+arch-chroot /mnt passwd $USERNAME
 
 echo "Unmounting..."
 umount -R /mnt
 
 echo "=============================="
 echo " INSTALL COMPLETE"
-echo "Reboot → GRUB → Arch → GUI login → Hyprland"
+echo ""
+echo "Reboot → GRUB → Arch"
+echo "You should see a login screen → Hyprland launches"
+echo ""
+echo "If it fails, run:"
+echo "dbus-run-session Hyprland"
 echo "=============================="
